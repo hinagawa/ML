@@ -1,117 +1,112 @@
-import matplotlib.pyplot as plt
 import numpy as np
-import random
+
+
+def dist(x1, y1, x2, y2):
+    return np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
 
 class Point:
-    def __init__(self, x, y, cluster=-1):
+    def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.cluster = cluster
+        self.prob = []
 
 
-def dist(a, b):
-    return np.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
+def kf(cluster_num, centers, point, m):
+    result = 0
+    dist_cluster = dist(centers[cluster_num].x, centers[cluster_num].y, point.x, point.y)
+    for center in centers:
+        result += pow(dist_cluster / dist(center.x, center.y, point.x, point.y), 2 / (1 - m))
+    return result
 
 
-def rand_points(n):
-    points = []
-    for i in range(n):
-        point = Point(np.random.randint(0, 100), np.random.randint(0, 100))
-        points.append(point)
-    return points
+def norm_kf(prob):
+    sum = 0
+    for probability in prob:
+        sum += probability
+    for i in range(0, len(prob)):
+        prob[i] /= sum
 
 
-def centroids(points, k, n, new_u, m):
-    centers = []
-    for j in range(k):
-        u_sum_x = 0
-        u_sum_y = 0
-        u_sum_2 = 0
-        for i in range(n):
-            u_sum_x += pow(new_u[i][j], m) * points[i].x
-            u_sum_y += pow(new_u[i][j], m) * points[i].y
-            u_sum_2 += pow(new_u[i][j], m)
-        center_x = u_sum_x / u_sum_2
-        center_y = u_sum_y / u_sum_2
-        center = Point(center_x, center_y)
-        centers.append(center)
-    return centers
+def calc_decisive(points, centers):
+    res_func = 0
+    for point in points:
+        prob = point.prob
+        for i in range(0, len(prob)):
+            res_func += prob[i] * dist(point.x, point.y, centers[i].x, centers[i].y)
+    return res_func
 
 
-def update_u(distance_matrix, n, k, m):
-    u = []
-    for i in range(n):
-        current = []
-        for j in range(k):
-            d = 0.0
-            current.append((1/distance_matrix[i][j]) ** (2 / (m - 1)))
-        u.append(current)
-    return normalize_u(u, n, k)
+def calc_c(k, m, points):
+    result = []
+    for i in range(0, k):
+        chis_x = 0
+        chis_y = 0
+        znam_x = 0
+        znam_y = 0
 
-def distance_matrix(points, centers, n, k):
-    distance_matrix = []
-    for i in range(n):
-        current = []
-        for j in range(k):
-            current.append(distanceBetweenPoints(points[i], centers[j]))
-        distance_matrix.append(current)
-    return distance_matrix
+        for point in points:
+            chis_x += pow(point.prob[i], m) * point.x
+            znam_x += pow(point.prob[i], m)
 
+            chis_y += pow(point.prob[i], m) * point.y
+            znam_y += pow(point.prob[i], m)
 
-def membership_random(k, n):
-    u = np.zeros((n, k))
-    for i in range(n):
-        row_sum = 0
-        for c in range(k):
-            if c == k - 1:  # last iteration
-                u[i][c] = 1.0 - row_sum
-            else:
-                rand_num = random.random()
-                rand_num = round(rand_num, 2)
-                if rand_num + row_sum <= 1:  # to prevent membership sum for a point to be larger than 1.0
-                    u[i][c] = rand_num
-                    row_sum += u[i][c]
-    return u
+        x_cluster_c = chis_x / znam_x
+        y_cluster_c = chis_y / znam_y
+
+        result.append(Point(x_cluster_c, y_cluster_c))
+
+    return result
 
 
-def distanceBetweenPoints(pointA, pointB):
-    return pow(pointA.x - pointB.x, 2) + pow(pointA.y - pointB.y, 2)
+def init_c(points, k, x_center, y_center):
+    R = 0
+    n = len(points)
+    for i in range(0, n):
+        r = dist(x_center, y_center, points[i].x, points[i].y)
+        if r > R:
+            R = r
+    x_cc = [R * np.cos(2 * np.pi * i / k) + x_center for i in range(k)]
+    y_cc = [R * np.sin(2 * np.pi * i / k) + y_center for i in range(k)]
+    result = []
+    for i in range(0, k):
+        result.append(Point(x_cc[i], y_cc[i]))
+    return result
 
 
-def check_condition(new_u, old_u, epsilon):
-    for i in range(0, len(new_u)):
-        for j in range(0, len(new_u[0])):
-            if abs(new_u[i][j] - old_u[i][j]) > epsilon:
-                return 0
-    return 1  # условие вып-ся
+def init_in_cluster(points, k):
+    for point in points:
+        for i in range(0, k):
+            point.prob.append(0)
 
-def normalize_u(new_u, n, k):
-    sum = []
-    for j in range(k):
-        col_sum = 0
-        for i in range(n):
-            col_sum += new_u[i][j]
-        sum.append(col_sum)
-    for j in range(k):
-        for i in range(n):
-            new_u[i][j] = new_u[i][j] / sum[j]
-    return new_u
 
-if __name__ == "__main__":
-    epsilon = 0.01
-    n = 4  # кол-во тчк
-    k = 3  # кол-во кластеров
-    m = 2  # коэфф неопределенности
-    points = rand_points(n)
-    old_u = membership_random(k, n)
-    new_u = [[]]
-    centers = centroids(points, k, n, old_u, m)
-    dist_matr = distance_matrix(points, centers, n, k)
-    new_u = update_u(dist_matr, n, k, m)
-    while not check_condition(new_u, old_u, epsilon):
-        old_u = new_u
-        centers = centroids(points, k, n, old_u, m)
-        dist_matr = distance_matrix(points, centers, n, k)
-        new_u = update_u(dist_matr, n, k, m)
-print('Finished clustering', new_u)
+EPSILON = 0.15
+
+
+def c_means(points, n, k):
+    begin = True
+    init_in_cluster(points, k)
+    x_center = np.mean(list(map(lambda e: e.x, points)))
+    y_center = np.mean(list(map(lambda e: e.y, points)))
+    decision = 1
+    prev_decision = 0
+    while abs(prev_decision - decision) > EPSILON:
+        prev_decision = decision
+        if begin:
+            centers = init_c(points, k, x_center, y_center)
+            begin = False
+        else:
+            centers = calc_c(k, n, points)
+        for point in points:
+            for i in range(0, len(centers)):
+                point.prob[i] = kf(i, centers, point, n)
+            norm_kf(point.prob)
+        decision = calc_decisive(points, centers)
+
+
+n, k = 20, 4
+points = [Point(np.random.randint(1, 100), np.random.randint(1, 100)) for i in range(n)]
+c_means(points, 1.5, k)
+for point in points:
+    print(str(point.x) + ":" + str(point.y) + " " + str(point.prob))
